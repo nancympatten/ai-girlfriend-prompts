@@ -8,7 +8,7 @@ Uses only the Python standard library.
 """
 
 import os
-BASE_URL = "https://ai-girlfriend-prompts.nancympatten.workers.dev"
+BASE_URL = "https://ai-girlfriend-prompts.pages.dev"
 SITE_NAME = "AI Girlfriend Prompts"
 NICHE_TOPIC = "AI Companion & Voice Roleplay Prompts"
 CONTACT_EMAIL = "nancympatten@gmail.com"
