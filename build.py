@@ -158,6 +158,8 @@ def page_shell(title, description, canonical, body, extra_head=""):
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
+<meta name="google-site-verification" content="Ee2L9A2G2nVVNtBt7HiplcBJf1nSen-Rcz4sNqLuAdc" />
+<meta name="msvalidate.01" content="4573069C62AEC27DA4F08DC57760BAD4" />
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="rating" content="{RATING_META}">
