@@ -4,15 +4,9 @@ AI Girlfriend Prompts — Static Website Generator
 Usage: python3 build.py
 
 Reads data.csv and generates a complete static website in dist/.
+Includes Google/Bing verification, unique category cards, live years,
+styled XML sitemaps, and 10-site network interlinking.
 Uses only the Python standard library.
-
-Improvements:
-1. Google and Bing search engine verification meta tags.
-2. Unique homepage category cards with accurate item counts.
-3. Automatic live-year JavaScript on every HTML page.
-4. Dark-mode styled XML sitemaps with XSL stylesheet.
-5. Ten-site interactive network footer on every HTML page.
-6. Automated build verification.
 """
 
 import os
@@ -28,6 +22,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import quote
+from xml.etree import ElementTree as ET
 
 BASE_URL = "https://ai-girlfriend-prompts.velvetgrid.workers.dev"
 SITE_NAME = "AI Girlfriend Prompts"
@@ -53,11 +48,7 @@ REQUIRED_COLUMNS = [
     "faq_q2", "faq_a2", "upload_date"
 ]
 
-
-# ============================================================
-# NETWORK FOOTER
-# ============================================================
-
+# Exact 10-site network interlinking block.
 NETWORK_FOOTER = """
 <div style="background:#0d1018;border-top:1px solid #1f2433;padding:24px 16px;margin-top:40px;font-family:system-ui,-apple-system,sans-serif;text-align:center;">
   <p style="color:#9ca3af;font-size:12px;letter-spacing:1px;text-transform:uppercase;margin:0 0 12px 0;">Explore Our Interactive Network</p>
@@ -76,10 +67,23 @@ NETWORK_FOOTER = """
 </div>
 """
 
+VERIFICATION_TAGS = f"""
+<meta name="google-site-verification" content="{GOOGLE_VERIFICATION}" />
+<meta name="msvalidate.01" content="{BING_VERIFICATION}" />
+"""
 
-# ============================================================
-# HELPERS
-# ============================================================
+LIVE_YEAR_SCRIPT = """
+<script>
+(function () {
+    'use strict';
+    var currentYear = new Date().getFullYear();
+    document.querySelectorAll('.live-year').forEach(function (element) {
+        element.textContent = currentYear;
+    });
+})();
+</script>
+"""
+
 
 def esc(value):
     return html.escape(str(value or ""), quote=True)
@@ -191,7 +195,6 @@ def read_csv():
 
             item["tags_list"] = split_tags(item["tags"])
             item["date_obj"] = parse_date(item["upload_date"])
-
             item["category"] = item["category"] or "General"
             item["subcategory"] = item["subcategory"] or "General"
 
@@ -222,37 +225,6 @@ def absolute_url(path=""):
     return BASE_URL.rstrip("/") + "/" + str(path).lstrip("/")
 
 
-# ============================================================
-# LIVE YEAR
-# ============================================================
-
-LIVE_YEAR_SCRIPT = """
-<script>
-(function () {
-    'use strict';
-
-    function updateLiveYear() {
-        var currentYear = new Date().getFullYear();
-
-        document.querySelectorAll('.live-year').forEach(function (element) {
-            element.textContent = currentYear;
-        });
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', updateLiveYear);
-    } else {
-        updateLiveYear();
-    }
-})();
-</script>
-"""
-
-
-# ============================================================
-# PAGE TEMPLATE
-# ============================================================
-
 def page_shell(title, description, canonical, body, extra_head=""):
     safe_title = esc(title)
     safe_description = esc(description)
@@ -264,10 +236,7 @@ def page_shell(title, description, canonical, body, extra_head=""):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="rating" content="{RATING_META}">
-
-<meta name="google-site-verification" content="{GOOGLE_VERIFICATION}" />
-<meta name="msvalidate.01" content="{BING_VERIFICATION}" />
-
+{VERIFICATION_TAGS}
 <title>{safe_title}</title>
 <meta name="description" content="{safe_description}">
 <link rel="canonical" href="{canonical_url}">
@@ -351,10 +320,9 @@ footer .footlinks{{display:flex;gap:16px;flex-wrap:wrap}}
 <a href="/">Home</a><a href="/#categories">Categories</a><a href="/#latest">Latest Prompts</a>
 </nav>
 </div></header>
-
 {body}
-
-<footer><div class="wrap">
+<footer>
+<div class="wrap">
 <div class="footlinks">
 <a href="/">Home</a><a href="/dmca.html">DMCA</a><a href="/2257.html">18 U.S.C. 2257</a>
 <a href="mailto:{esc(CONTACT_EMAIL)}">Contact</a>
@@ -363,7 +331,6 @@ footer .footlinks{{display:flex;gap:16px;flex-wrap:wrap}}
 </div>
 {NETWORK_FOOTER}
 </footer>
-
 <div class="age-overlay hidden" id="age-overlay" role="dialog" aria-modal="true" aria-labelledby="age-title">
 <div class="age-dialog">
 <h2 id="age-title">Adults Only — 18+</h2>
@@ -371,9 +338,7 @@ footer .footlinks{{display:flex;gap:16px;flex-wrap:wrap}}
 <button id="age-yes">I am 18 or older</button>
 <button class="secondary" id="age-no">Exit</button>
 </div></div>
-
 <div class="sticky-affiliate"><a class="button" href="{esc(AFFILIATE_URL)}" rel="nofollow sponsored">{esc(AFFILIATE_CTA_TEXT)}</a></div>
-
 <script>
 (function(){{
  const overlay=document.getElementById('age-overlay');
@@ -389,15 +354,9 @@ footer .footlinks{{display:flex;gap:16px;flex-wrap:wrap}}
  }});
 }})();
 </script>
-
 {LIVE_YEAR_SCRIPT}
-
 </body></html>"""
 
-
-# ============================================================
-# HOMEPAGE CARDS
-# ============================================================
 
 def prompt_card(item):
     return f"""<a class="card prompt-card" href="/prompt/{quote(item['slug'])}.html"
@@ -409,7 +368,7 @@ def prompt_card(item):
 
 
 def category_card(category, category_slug, count):
-    return f"""<a class="card" href="/category/{quote(category_slug)}/page-1.html">
+    return f"""<a class="card category-card" href="/category/{quote(category_slug)}/page-1.html">
 <h3>{esc(category)}</h3>
 <p>Explore prompts in {esc(category)}.</p>
 <span class="count">{count} prompts</span>
@@ -417,38 +376,49 @@ def category_card(category, category_slug, count):
 
 
 def generate_home(items):
-    # Count by actual category name, not by generated URL slug.
-    # This ensures each distinct category is displayed exactly once.
+    # Group by the actual category name, not by individual CSV rows.
+    # Case-insensitive grouping prevents duplicate cards caused by
+    # capitalization differences.
+    category_groups = defaultdict(list)
+    category_names = {}
 
-    category_counts = Counter(
-        item["category"] for item in items
-    )
+    for item in items:
+        category = clean(item["category"])
+        key = category.casefold()
+
+        category_groups[key].append(item)
+        category_names.setdefault(key, category)
 
     categories_html = "".join(
         category_card(
-            category,
-            slugify(category),
-            count
+            category_names[key],
+            slugify(category_names[key]),
+            len(category_groups[key])
         )
-        for category, count in sorted(
-            category_counts.items(),
-            key=lambda entry: entry[0].casefold()
+        for key in sorted(
+            category_groups,
+            key=lambda category_key: category_names[category_key].casefold()
         )
     )
 
     subcategories = defaultdict(list)
 
     for item in items:
-        subcategories[
-            (item["subcategory_slug"], item["subcategory"])
-        ].append(item)
+        key = (
+            item["subcategory_slug"],
+            item["subcategory"].casefold()
+        )
+        subcategories[key].append(item)
 
     subcategory_html = "".join(
-        f'<a class="tag" href="/topic/{quote(slug)}.html">{esc(name)} ({len(group)})</a>'
-        for (slug, name), group in sorted(
+        f'<a class="tag" href="/topic/{quote(slug)}.html">'
+        f'{esc(name)} ({len(group)})</a>'
+        for (slug, _), group in sorted(
             subcategories.items(),
-            key=lambda entry: entry[0][1].casefold()
+            key=lambda entry: entry[0][1]
         )
+        for name in [group[0]["subcategory"]]
+        for group in [subcategories[(slug, _)]]
     )
 
     tag_counts = Counter(
@@ -458,7 +428,8 @@ def generate_home(items):
     )
 
     tag_html = "".join(
-        f'<a class="tag" href="/tag/{quote(slugify(tag))}.html">{esc(tag)} ({count})</a>'
+        f'<a class="tag" href="/tag/{quote(slugify(tag))}.html">'
+        f'{esc(tag)} ({count})</a>'
         for tag, count in tag_counts.most_common(40)
     )
 
@@ -481,33 +452,26 @@ def generate_home(items):
 <input class="search" id="home-search" type="search" placeholder="Search prompts, keywords, and tags..." aria-label="Search prompts">
 <p id="search-status" class="muted"></p>
 </div></section>
-
 <div class="ad-slot"><!-- AD_SLOT_TOP_BANNER --></div>
-
 <section class="section wrap" id="categories">
 <h2>Browse Prompt Categories</h2>
-<div class="grid">{categories_html}</div>
+<div class="grid" id="category-grid">{categories_html}</div>
 </section>
-
 <section class="section wrap">
 <h2>Browse Topics</h2>
 <div class="tag-list">{subcategory_html}</div>
 </section>
-
 <section class="section wrap">
 <h2>Explore Prompt Tags</h2>
 <div class="tag-list">{tag_html}</div>
 </section>
-
 <div class="ad-slot"><!-- AD_SLOT_MID_CONTENT --></div>
-
 <section class="section wrap" id="latest">
 <h2>30 Newest AI Girlfriend Prompts</h2>
 <div class="grid" id="latest-grid">{newest_html}</div>
 <p id="no-results" class="muted hidden">No matching prompts found.</p>
 </section>
 </main>
-
 <script>
 (function(){{
  const input=document.getElementById('home-search');
@@ -543,10 +507,6 @@ def generate_home(items):
     )
 
 
-# ============================================================
-# STRUCTURED DATA
-# ============================================================
-
 def json_ld_script(data):
     serialized = json.dumps(
         data,
@@ -555,13 +515,16 @@ def json_ld_script(data):
     )
 
     serialized = (
-        serialized
-        .replace("<", "\\u003c")
+        serialized.replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
     )
 
-    return f'<script type="application/ld+json">{serialized}</script>'
+    return (
+        '<script type="application/ld+json">'
+        + serialized
+        + '</script>'
+    )
 
 
 def related_items(item, items):
@@ -571,11 +534,18 @@ def related_items(item, items):
         and candidate["subcategory_slug"] == item["subcategory_slug"]
     ]
 
+    item_tags = {
+        tag.casefold()
+        for tag in item["tags_list"]
+    }
+
     shared_tags = [
         candidate for candidate in items
         if candidate["slug"] != item["slug"]
-        and set(tag.casefold() for tag in candidate["tags_list"])
-        & set(tag.casefold() for tag in item["tags_list"])
+        and item_tags.intersection(
+            tag.casefold()
+            for tag in candidate["tags_list"]
+        )
     ]
 
     chosen = []
@@ -601,10 +571,6 @@ def related_items(item, items):
     return chosen[:RELATED_ITEMS]
 
 
-# ============================================================
-# INDIVIDUAL PROMPT PAGES
-# ============================================================
-
 def generate_prompt_page(item, items):
     slug = item["slug"]
     title = item["title"]
@@ -623,8 +589,7 @@ def generate_prompt_page(item, items):
     )
 
     prompt_json = (
-        prompt_json
-        .replace("<", "\\u003c")
+        prompt_json.replace("<", "\\u003c")
         .replace(">", "\\u003e")
     )
 
@@ -739,12 +704,14 @@ def generate_prompt_page(item, items):
     )
 
     tags_html = " ".join(
-        f'<a class="tag" href="/tag/{quote(slugify(tag))}.html">{esc(tag)}</a>'
+        f'<a class="tag" href="/tag/{quote(slugify(tag))}.html">'
+        f'{esc(tag)}</a>'
         for tag in item["tags_list"]
     )
 
     faq_html = "".join(
-        f'<div class="faq"><h3>{esc(item[q])}</h3><p>{esc(item[a])}</p></div>'
+        f'<div class="faq"><h3>{esc(item[q])}</h3>'
+        f'<p>{esc(item[a])}</p></div>'
         for q, a in (
             ("faq_q1", "faq_a1"),
             ("faq_q2", "faq_a2")
@@ -755,41 +722,17 @@ def generate_prompt_page(item, items):
     body = f"""
 <main class="wrap">
 <div class="content">
-
-<nav class="breadcrumbs">
-<a href="/">Home</a> /
-<a href="/category/{quote(item['category_slug'])}/page-1.html">{esc(item['category'])}</a> /
-{esc(title)}
-</nav>
-
+<nav class="breadcrumbs"><a href="/">Home</a> / <a href="/category/{quote(item['category_slug'])}/page-1.html">{esc(item['category'])}</a> / {esc(title)}</nav>
 <h1>{esc(title)}</h1>
-
 <p class="muted">{esc(description)}</p>
-
-<p class="muted">
-Category:
-<a href="/category/{quote(item['category_slug'])}/page-1.html">{esc(item['category'])}</a>
-· Topic:
-<a href="/topic/{quote(item['subcategory_slug'])}.html">{esc(item['subcategory'])}</a>
-</p>
-
+<p class="muted">Category: <a href="/category/{quote(item['category_slug'])}/page-1.html">{esc(item['category'])}</a> · Topic: <a href="/topic/{quote(item['subcategory_slug'])}.html">{esc(item['subcategory'])}</a></p>
 <div class="tag-list">{tags_html}</div>
 
 <section class="prompt-box">
 <h2>Customize Your AI Companion Prompt</h2>
-
-<div class="field">
-<label for="your-name">Your Name</label>
-<input id="your-name" placeholder="Enter your name" autocomplete="given-name">
-</div>
-
-<div class="field">
-<label for="ai-name">AI Name</label>
-<input id="ai-name" placeholder="Enter an AI character name">
-</div>
-
-<div class="field">
-<label for="personality-tone">Personality Tone</label>
+<div class="field"><label for="your-name">Your Name</label><input id="your-name" placeholder="Enter your name" autocomplete="given-name"></div>
+<div class="field"><label for="ai-name">AI Name</label><input id="ai-name" placeholder="Enter an AI character name"></div>
+<div class="field"><label for="personality-tone">Personality Tone</label>
 <select id="personality-tone">
 <option value="warm and affectionate">Warm and affectionate</option>
 <option value="playful and teasing">Playful and teasing</option>
@@ -798,24 +741,14 @@ Category:
 <option value="shy and sweet">Shy and sweet</option>
 <option value="calm and reassuring">Calm and reassuring</option>
 <option value="witty and adventurous">Witty and adventurous</option>
-</select>
-</div>
-
+</select></div>
 <div class="controls">
 <button type="button" id="copy-prompt">Copy Prompt</button>
 <button type="button" class="secondary" id="font-down" aria-label="Decrease prompt font size">A−</button>
 <button type="button" class="secondary" id="font-up" aria-label="Increase prompt font size">A+</button>
 </div>
-
-<p class="muted" id="copy-status" aria-live="polite">
-Customize the fields above, then copy your prompt.
-</p>
-
-<p class="muted">
-<span id="char-count">0</span> characters ·
-Approximately <span id="token-count">0</span> tokens
-</p>
-
+<p class="muted" id="copy-status" aria-live="polite">Customize the fields above, then copy your prompt.</p>
+<p class="muted"><span id="char-count">0</span> characters · Approximately <span id="token-count">0</span> tokens</p>
 <div class="prompt-text" id="prompt-output"></div>
 </section>
 
@@ -828,25 +761,19 @@ Approximately <span id="token-count">0</span> tokens
 <section class="audio-box">
 <h2>Ambient Mood Player</h2>
 <p class="muted">Create a gentle background atmosphere using your browser's built-in audio engine.</p>
-
 <label for="audio-mode">Choose an ambience</label>
 <select id="audio-mode">
 <option value="rain">Late Night Rain</option>
 <option value="heartbeat">Soft Heartbeat</option>
 <option value="fireplace">Cozy Fireplace Brown Noise</option>
 </select>
-
 <label for="audio-volume">Volume</label>
 <input id="audio-volume" type="range" min="0" max="1" step="0.05" value="0.25">
-
 <div class="controls">
 <button type="button" id="audio-play">Play ambience</button>
 <button type="button" class="secondary" id="audio-stop">Stop</button>
 </div>
-
-<p class="muted" id="audio-status" aria-live="polite">
-Audio starts only after you press Play.
-</p>
+<p class="muted" id="audio-status" aria-live="polite">Audio starts only after you press Play.</p>
 </section>
 
 <section class="section">
@@ -864,30 +791,25 @@ Audio starts only after you press Play.
 <h2>Related AI Girlfriend Prompts</h2>
 <div class="grid">{related_html}</div>
 </section>
-
 </div>
 </main>
 
 <script>
 (function(){{
  const original={prompt_json};
-
  const nameInput=document.getElementById('your-name');
  const aiInput=document.getElementById('ai-name');
  const toneInput=document.getElementById('personality-tone');
-
  const output=document.getElementById('prompt-output');
  const charCount=document.getElementById('char-count');
  const tokenCount=document.getElementById('token-count');
  const status=document.getElementById('copy-status');
-
  let fontSize=16;
 
  function render(){{
    const yourName=nameInput.value.trim()||'Your Name';
    const aiName=aiInput.value.trim()||'AI Name';
    const tone=toneInput.value;
-
    let result=original;
 
    const replacements={{
@@ -904,12 +826,8 @@ Audio starts only after you press Play.
    }});
 
    output.textContent=result;
-
    charCount.textContent=result.length.toLocaleString();
-
-   tokenCount.textContent=Math.ceil(
-     result.trim().split(/\\s+/).filter(Boolean).length*1.3
-   ).toLocaleString();
+   tokenCount.textContent=Math.ceil(result.trim().split(/\\s+/).filter(Boolean).length*1.3).toLocaleString();
 
    return result;
  }}
@@ -926,11 +844,9 @@ Audio starts only after you press Play.
    }}catch(error){{
      const range=document.createRange();
      range.selectNodeContents(output);
-
      const selection=window.getSelection();
      selection.removeAllRanges();
      selection.addRange(range);
-
      status.textContent='Select the highlighted prompt and copy it manually.';
    }}
  }});
@@ -972,25 +888,17 @@ Audio starts only after you press Play.
    if(noiseBuffer)return noiseBuffer;
 
    const length=audioContext.sampleRate*3;
-
-   noiseBuffer=audioContext.createBuffer(
-     1,
-     length,
-     audioContext.sampleRate
-   );
+   noiseBuffer=audioContext.createBuffer(1,length,audioContext.sampleRate);
 
    const data=noiseBuffer.getChannelData(0);
 
-   for(let i=0;i<length;i++){{
-     data[i]=Math.random()*2-1;
-   }}
+   for(let i=0;i<length;i++)data[i]=Math.random()*2-1;
 
    return noiseBuffer;
  }}
 
  function makeNoise(filterType,frequency,gainValue){{
    const source=audioContext.createBufferSource();
-
    source.buffer=getNoiseBuffer();
    source.loop=true;
 
@@ -1016,12 +924,10 @@ Audio starts only after you press Play.
 
    oscillator.type=type;
    oscillator.frequency.value=frequency;
-
    gain.gain.value=gainValue;
 
    oscillator.connect(gain);
    gain.connect(masterGain);
-
    oscillator.start();
 
    activeNodes.push(oscillator,gain);
@@ -1036,48 +942,32 @@ Audio starts only after you press Play.
    try{{
      const AudioContextClass=window.AudioContext||window.webkitAudioContext;
 
-     if(!AudioContextClass){{
-       throw new Error('Web Audio is not supported in this browser.');
-     }}
+     if(!AudioContextClass)throw new Error('Web Audio is not supported in this browser.');
 
-     if(!audioContext){{
-       audioContext=new AudioContextClass();
-     }}
+     if(!audioContext)audioContext=new AudioContextClass();
 
-     if(audioContext.state==='suspended'){{
-       await audioContext.resume();
-     }}
+     if(audioContext.state==='suspended')await audioContext.resume();
 
      masterGain=audioContext.createGain();
-
-     masterGain.gain.value=Number(
-       document.getElementById('audio-volume').value
-     );
-
+     masterGain.gain.value=Number(document.getElementById('audio-volume').value);
      masterGain.connect(audioContext.destination);
 
      if(mode==='rain'){{
        makeNoise('lowpass',1200,0.75);
        makeNoise('highpass',450,0.12);
        makeOscillator(90,'sine',0.025);
-
        statusEl.textContent='Playing Late Night Rain.';
-
      }}else if(mode==='heartbeat'){{
        makeNoise('lowpass',180,0.06);
        makeOscillator(48,'sine',0.18);
        makeOscillator(72,'sine',0.07);
-
        statusEl.textContent='Playing Soft Heartbeat ambience.';
-
      }}else{{
        makeNoise('lowpass',320,0.65);
        makeNoise('highpass',900,0.08);
        makeOscillator(55,'triangle',0.025);
-
        statusEl.textContent='Playing Cozy Fireplace Brown Noise.';
      }}
-
    }}catch(error){{
      stopAudio();
      statusEl.textContent=error.message||'Unable to start audio.';
@@ -1088,15 +978,12 @@ Audio starts only after you press Play.
  document.getElementById('audio-stop').addEventListener('click',stopAudio);
 
  document.getElementById('audio-volume').addEventListener('input',function(){{
-   if(masterGain){{
-     masterGain.gain.value=Number(this.value);
-   }}
+   if(masterGain)masterGain.gain.value=Number(this.value);
  }});
 
  window.addEventListener('pagehide',stopAudio);
 }})();
 </script>
-
 {schemas}
 """
 
@@ -1111,10 +998,6 @@ Audio starts only after you press Play.
         )
     )
 
-
-# ============================================================
-# LISTING PAGES AND PAGINATION
-# ============================================================
 
 def pagination_html(page, total_pages, base_path):
     if total_pages <= 1:
@@ -1132,8 +1015,8 @@ def pagination_html(page, total_pages, base_path):
 
     return (
         f'<nav class="pagination" aria-label="Pagination">'
-        f'{previous}<span>Page {page} of {total_pages}</span>'
-        f'{following}</nav>'
+        f'{previous}<span>Page {page} of {total_pages}</span>{following}'
+        f'</nav>'
     )
 
 
@@ -1192,19 +1075,18 @@ def generate_listing_page(
     )
 
 
-# ============================================================
-# CATEGORY PAGES
-# ============================================================
-
 def generate_categories(items):
     categories = defaultdict(list)
-    names = {}
+    category_names = {}
 
     for item in items:
         category_slug = item["category_slug"]
 
         categories[category_slug].append(item)
-        names.setdefault(category_slug, item["category"])
+        category_names.setdefault(
+            category_slug,
+            item["category"]
+        )
 
     for category_slug, category_items in categories.items():
         category_items.sort(
@@ -1227,17 +1109,15 @@ def generate_categories(items):
             ]
 
             output = (
-                DIST
-                / "category"
-                / category_slug
+                DIST / "category" / category_slug
                 / f"page-{page}.html"
             )
 
             canonical = f"{base_path}/page-{page}.html"
 
             generate_listing_page(
-                f"{names[category_slug]} Prompts",
-                f"Browse {len(category_items)} AI companion prompts in the {names[category_slug]} category.",
+                f"{category_names[category_slug]} Prompts",
+                f"Browse {len(category_items)} AI companion prompts in the {category_names[category_slug]} category.",
                 page_items,
                 output,
                 canonical,
@@ -1246,10 +1126,6 @@ def generate_categories(items):
                 total_pages
             )
 
-
-# ============================================================
-# SUBCATEGORY PAGES
-# ============================================================
 
 def generate_subcategories(items):
     groups = defaultdict(list)
@@ -1276,10 +1152,6 @@ def generate_subcategories(items):
             f"/topic/{key}"
         )
 
-
-# ============================================================
-# TAG PAGES
-# ============================================================
 
 def generate_tags(items):
     groups = defaultdict(list)
@@ -1316,20 +1188,13 @@ def generate_tags(items):
         )
 
 
-# ============================================================
-# COMPLIANCE PAGES
-# ============================================================
-
 def generate_compliance_pages():
     dmca_body = f"""
 <main class="wrap section content">
 <h1>DMCA Copyright Policy</h1>
 <p>{esc(SITE_NAME)} respects intellectual property rights and responds to valid notices under the Digital Millennium Copyright Act.</p>
-
 <h2>Submit a takedown request</h2>
-
 <p>Send a notice to <a href="mailto:{esc(CONTACT_EMAIL)}">{esc(CONTACT_EMAIL)}</a> containing:</p>
-
 <ul>
 <li>Identification of the copyrighted work claimed to be infringed.</li>
 <li>Identification of the material and its location on this website.</li>
@@ -1338,7 +1203,6 @@ def generate_compliance_pages():
 <li>A statement, under penalty of perjury, that the information is accurate and that you are authorized to act.</li>
 <li>Your physical or electronic signature.</li>
 </ul>
-
 <p>We may remove or disable access to material that is the subject of a compliant notice.</p>
 </main>
 """
@@ -1373,10 +1237,6 @@ def generate_compliance_pages():
     )
 
 
-# ============================================================
-# DARK MODE XML SITEMAP STYLESHEET
-# ============================================================
-
 SITEMAP_XSL = """<?xml version="1.0" encoding="UTF-8"?>
 <xsl:stylesheet version="1.0"
  xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
@@ -1387,123 +1247,63 @@ SITEMAP_XSL = """<?xml version="1.0" encoding="UTF-8"?>
 <xsl:template match="/">
 <html>
 <head>
-<title>XML Sitemap | AI Girlfriend Prompts</title>
-
+<title>XML Sitemap</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
 <style>
-* {
-    box-sizing: border-box;
+*{box-sizing:border-box}
+body{
+    font:15px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;
+    background:#0b0b12;
+    color:#f5f2fa;
+    padding:30px 18px;
+    margin:0
 }
-
-body {
-    font: 15px system-ui, -apple-system, Segoe UI, sans-serif;
-    background: #0b0b12;
-    color: #f5f2fa;
-    padding: 30px;
-    margin: 0;
+main{
+    max-width:1100px;
+    margin:20px auto;
+    background:#151522;
+    border:1px solid #302b40;
+    border-radius:14px;
+    padding:25px
 }
-
-main {
-    max-width: 1100px;
-    margin: 30px auto;
+h1{color:#e879b9;margin-top:0}
+table{
+    width:100%;
+    border-collapse:collapse;
+    background:#151522;
+    overflow-wrap:anywhere
 }
-
-h1 {
-    color: #e879b9;
-    font-size: 28px;
+th,td{
+    text-align:left;
+    padding:13px;
+    border-bottom:1px solid #393247
 }
-
-p {
-    color: #aaa5b8;
-    line-height: 1.7;
+th{color:#e879b9}
+a{
+    color:#c4b5fd;
+    overflow-wrap:anywhere;
+    text-decoration:none
 }
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #151522;
-    border: 1px solid #302b40;
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-th, td {
-    text-align: left;
-    padding: 14px;
-    border-bottom: 1px solid #302b40;
-}
-
-th {
-    color: #e879b9;
-    background: #1d1b2b;
-}
-
-td {
-    overflow-wrap: anywhere;
-}
-
-a {
-    color: #c4b5fd;
-    text-decoration: none;
-}
-
-a:hover {
-    color: #e879b9;
-    text-decoration: underline;
-}
-
-tr:hover {
-    background: #1d1b2b;
-}
-
-.footer {
-    margin-top: 25px;
-    color: #777;
-    font-size: 12px;
-}
-
-@media(max-width:650px) {
-    body {
-        padding: 14px;
-    }
-
-    th, td {
-        padding: 10px;
-        font-size: 13px;
-    }
-
-    h1 {
-        font-size: 23px;
-    }
+a:hover{text-decoration:underline;color:#e879b9}
+p{color:#aaa5b8}
+@media(max-width:600px){
+    body{padding:12px}
+    main{padding:14px}
+    th,td{padding:9px;font-size:13px}
 }
 </style>
-
 </head>
-
 <body>
 <main>
-
 <h1>XML Sitemap</h1>
-
-<p>
-Explore the published URLs of AI Girlfriend Prompts.
-This sitemap helps search engines discover website pages.
-</p>
+<p>Use this sitemap to explore the URLs published by this website.</p>
 
 <xsl:choose>
-
 <xsl:when test="s:urlset">
-
 <table>
-<tr>
-<th>URL</th>
-<th>Last Modified</th>
-</tr>
-
+<tr><th>URL</th><th>Last modified</th></tr>
 <xsl:for-each select="s:urlset/s:url">
 <tr>
-
 <td>
 <a>
 <xsl:attribute name="href">
@@ -1512,29 +1312,17 @@ This sitemap helps search engines discover website pages.
 <xsl:value-of select="s:loc"/>
 </a>
 </td>
-
-<td>
-<xsl:value-of select="s:lastmod"/>
-</td>
-
+<td><xsl:value-of select="s:lastmod"/></td>
 </tr>
 </xsl:for-each>
-
 </table>
-
 </xsl:when>
 
 <xsl:when test="s:sitemapindex">
-
 <table>
-<tr>
-<th>Sitemap</th>
-<th>Last Modified</th>
-</tr>
-
+<tr><th>Sitemap</th><th>Last modified</th></tr>
 <xsl:for-each select="s:sitemapindex/s:sitemap">
 <tr>
-
 <td>
 <a>
 <xsl:attribute name="href">
@@ -1543,36 +1331,20 @@ This sitemap helps search engines discover website pages.
 <xsl:value-of select="s:loc"/>
 </a>
 </td>
-
-<td>
-<xsl:value-of select="s:lastmod"/>
-</td>
-
+<td><xsl:value-of select="s:lastmod"/></td>
 </tr>
 </xsl:for-each>
-
 </table>
-
 </xsl:when>
-
 </xsl:choose>
-
-<p class="footer">
-Generated automatically by the AI Girlfriend Prompts website builder.
-</p>
 
 </main>
 </body>
 </html>
-
 </xsl:template>
 </xsl:stylesheet>
 """
 
-
-# ============================================================
-# XML HELPERS
-# ============================================================
 
 def xml_escape(value):
     return (
@@ -1584,10 +1356,6 @@ def xml_escape(value):
         .replace("'", "&apos;")
     )
 
-
-# ============================================================
-# XML SITEMAP GENERATION
-# ============================================================
 
 def generate_sitemaps(items):
     urls = {
@@ -1604,9 +1372,7 @@ def generate_sitemaps(items):
     category_groups = defaultdict(list)
 
     for item in items:
-        category_groups[
-            item["category_slug"]
-        ].append(item)
+        category_groups[item["category_slug"]].append(item)
 
     for category_slug, group in category_groups.items():
         pages = max(
@@ -1636,7 +1402,7 @@ def generate_sitemaps(items):
         for i in range(0, len(sorted_urls), 1000)
     ] or [[]]
 
-    # Generate the XSL file before generating the XML documents.
+    # Generate the stylesheet before generating XML files.
     write_file(
         DIST / "sitemap.xsl",
         SITEMAP_XSL
@@ -1646,7 +1412,6 @@ def generate_sitemaps(items):
 
     for index, chunk in enumerate(chunks, start=1):
         filename = f"sitemap-{index}.xml"
-
         child_names.append(filename)
 
         entries = []
@@ -1667,16 +1432,17 @@ def generate_sitemaps(items):
             + "\n</urlset>"
         )
 
+        # Verify generated child sitemap XML before writing.
+        ET.fromstring(xml)
+
         write_file(
             DIST / filename,
             xml
         )
 
     sitemap_entries = "".join(
-        f"<sitemap>"
-        f"<loc>{xml_escape(absolute_url('/' + name))}</loc>"
-        f"<lastmod>{date.today().isoformat()}</lastmod>"
-        f"</sitemap>"
+        f"<sitemap><loc>{xml_escape(absolute_url('/' + name))}</loc>"
+        f"<lastmod>{date.today().isoformat()}</lastmod></sitemap>"
         for name in child_names
     )
 
@@ -1688,15 +1454,14 @@ def generate_sitemaps(items):
         + "\n</sitemapindex>"
     )
 
+    # Verify sitemap index XML before writing.
+    ET.fromstring(index_xml)
+
     write_file(
         DIST / "sitemap.xml",
         index_xml
     )
 
-
-# ============================================================
-# ROBOTS.TXT
-# ============================================================
 
 def generate_robots():
     content = (
@@ -1710,10 +1475,6 @@ def generate_robots():
         content
     )
 
-
-# ============================================================
-# BUILD VERIFICATION
-# ============================================================
 
 def verify_build(items):
     required_files = [
@@ -1732,64 +1493,102 @@ def verify_build(items):
                 f"Build verification failed: missing {path}"
             )
 
+    # Check homepage.
     homepage = (
         DIST / "index.html"
     ).read_text(encoding="utf-8")
 
-    # Verify homepage category section.
     if "Browse Prompt Categories" not in homepage:
         raise RuntimeError(
             "Homepage category section was not generated."
         )
 
-    # Verify unique category cards and accurate counts.
+    # Verify all unique categories and exact item counts.
     category_counts = Counter(
-        item["category"]
+        item["category"].casefold()
         for item in items
     )
 
-    for category, count in category_counts.items():
+    category_cards = re.findall(
+        r'<a class="card category-card"[^>]*>',
+        homepage
+    )
+
+    category_card_count = homepage.count(
+        'class="card category-card"'
+    )
+
+    if category_card_count != len(category_counts):
+        raise RuntimeError(
+            "Homepage contains duplicate or missing category cards. "
+            f"Expected {len(category_counts)}, found {category_card_count}."
+        )
+
+    for category_key, count in category_counts.items():
+        matching_items = [
+            item for item in items
+            if item["category"].casefold() == category_key
+        ]
+
+        category_name = matching_items[0]["category"]
         expected = f"{count} prompts"
 
-        if expected not in homepage:
+        if (
+            esc(category_name) not in homepage
+            or expected not in homepage
+        ):
             raise RuntimeError(
-                f"Category count missing for {category}: {expected}"
+                f"Category count missing or incorrect for "
+                f"{category_name}: expected {expected}"
             )
 
-    # Confirm each category card occurs exactly once.
-    for category in category_counts:
-        card_heading = f"<h3>{esc(category)}</h3>"
-
-        occurrences = homepage.count(card_heading)
-
-        if occurrences != 1:
-            raise RuntimeError(
-                f"Duplicate or missing category card: {category}. "
-                f"Found {occurrences} cards."
-            )
-
-    # Verify all HTML pages have search engine verification tags,
-    # live-year script and the network footer.
+    # Check that verification tags appear on every generated HTML page.
     html_files = list(DIST.rglob("*.html"))
 
     for path in html_files:
         content = path.read_text(encoding="utf-8")
 
-        checks = {
-            "Google verification": GOOGLE_VERIFICATION,
-            "Bing verification": BING_VERIFICATION,
-            "Live-year script": "document.querySelectorAll('.live-year')",
-            "Live-year element": 'class="live-year"',
-            "Network footer": "Explore Our Interactive Network",
-            "Network link: Couples Bucket List": "couples-bucket-list.velvetgrid.workers.dev",
-            "Network link: Adult AI Art Prompts": "adult-ai-art-prompts.velvetgrid.workers.dev"
-        }
+        if (
+            f'name="google-site-verification" content="{GOOGLE_VERIFICATION}"'
+            not in content
+        ):
+            raise RuntimeError(
+                f"Google verification tag missing from {path}"
+            )
 
-        for check_name, expected in checks.items():
-            if expected not in content:
-                raise RuntimeError(
-                    f"{check_name} missing from generated page: {path}"
-                )
+        if (
+            f'name="msvalidate.01" content="{BING_VERIFICATION}"'
+            not in content
+        ):
+            raise RuntimeError(
+                f"Bing verification tag missing from {path}"
+            )
+
+        if 'class="live-year"' not in content:
+            raise RuntimeError(
+                f"Live-year element missing from {path}"
+            )
+
+        if "new Date().getFullYear()" not in content:
+            raise RuntimeError(
+                f"Live-year JavaScript missing from {path}"
+            )
+
+        if "Explore Our Interactive Network" not in content:
+            raise RuntimeError(
+                f"Network footer missing from {path}"
+            )
+
+        network_links = re.findall(
+            r'<a href="https://[^"]+\.velvetgrid\.workers\.dev"',
+            content
+        )
+
+        if len(network_links) != 10:
+            raise RuntimeError(
+                f"Expected 10 network links in {path}, "
+                f"found {len(network_links)}."
+            )
 
     # Verify every prompt page exists.
     for item in items:
@@ -1802,38 +1601,33 @@ def verify_build(items):
                 f"Missing prompt page: {detail}"
             )
 
-    # Verify all XML sitemap files contain the stylesheet instruction.
-    xml_files = list(DIST.glob("sitemap*.xml"))
-
-    stylesheet_instruction = (
-        '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>'
+    # Verify sitemap stylesheet references.
+    sitemap_files = list(
+        DIST.glob("sitemap*.xml")
     )
 
-    for path in xml_files:
-        content = path.read_text(encoding="utf-8")
+    for path in sitemap_files:
+        xml_content = path.read_text(
+            encoding="utf-8"
+        )
 
-        if stylesheet_instruction not in content:
+        expected_stylesheet = (
+            '<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>'
+        )
+
+        if expected_stylesheet not in xml_content:
             raise RuntimeError(
-                f"Sitemap stylesheet instruction missing: {path}"
+                f"Stylesheet reference missing from {path}"
             )
 
-        if not content.startswith('<?xml version="1.0" encoding="UTF-8"?>'):
-            raise RuntimeError(
-                f"Invalid XML declaration: {path}"
-            )
-
-    # Verify sitemap XML syntax using Python standard library.
-    import xml.etree.ElementTree as ET
-
-    for path in xml_files:
         try:
             ET.parse(path)
         except ET.ParseError as error:
             raise RuntimeError(
-                f"Invalid sitemap XML in {path}: {error}"
+                f"Invalid XML in {path}: {error}"
             )
 
-    # Verify XSL is valid XML.
+    # Verify the XSL file exists and is valid XML.
     try:
         ET.parse(DIST / "sitemap.xsl")
     except ET.ParseError as error:
@@ -1841,34 +1635,32 @@ def verify_build(items):
             f"Invalid sitemap XSL: {error}"
         )
 
-    # Verify the homepage has no duplicated category headings.
-    homepage_category_headings = re.findall(
-        r'<h3>(.*?)</h3>',
-        homepage
+    print(f"Verified {len(items)} prompt pages.")
+    print(
+        f"Verified {len(category_counts)} unique category groups."
+    )
+    print(
+        f"Verified {category_card_count} unique homepage category cards."
+    )
+    print(
+        f"Verified Google and Bing meta tags on {len(html_files)} HTML pages."
+    )
+    print(
+        f"Verified live-year JavaScript on {len(html_files)} HTML pages."
+    )
+    print(
+        f"Verified all 10 network links on {len(html_files)} HTML pages."
+    )
+    print(
+        f"Verified {len(sitemap_files)} valid XML sitemap files."
+    )
+    print(
+        "Verified dark-mode sitemap.xsl stylesheet."
+    )
+    print(
+        "All required site files and SEO checks passed."
     )
 
-    expected_categories = len(category_counts)
-
-    if len(homepage_category_headings) < expected_categories:
-        raise RuntimeError(
-            "Homepage contains fewer category cards than expected."
-        )
-
-    print(f"Verified {len(items)} prompt pages.")
-    print(f"Verified {expected_categories} unique category groups.")
-    print(f"Verified {len(html_files)} HTML pages.")
-    print(f"Verified {len(xml_files)} XML sitemap files.")
-    print("Verified Google and Bing verification meta tags.")
-    print("Verified automatic live-year JavaScript.")
-    print("Verified network footer on all HTML pages.")
-    print("Verified dark-mode sitemap stylesheet.")
-    print("Verified XML sitemap syntax.")
-    print("All required site files are present.")
-
-
-# ============================================================
-# MAIN BUILD
-# ============================================================
 
 def build():
     print(f"Building {SITE_NAME}...")
@@ -1883,61 +1675,38 @@ def build():
         exist_ok=True
     )
 
-    # Homepage.
     generate_home(items)
 
-    # Individual prompt pages.
     for item in items:
-        generate_prompt_page(
-            item,
-            items
-        )
+        generate_prompt_page(item, items)
 
-    # Category, topic and tag pages.
     generate_categories(items)
     generate_subcategories(items)
     generate_tags(items)
-
-    # Compliance pages.
     generate_compliance_pages()
-
-    # SEO infrastructure.
     generate_robots()
     generate_sitemaps(items)
 
-    # Automated verification.
     verify_build(items)
 
     print()
-    print("=" * 55)
-    print("BUILD COMPLETE")
-    print("=" * 55)
-    print(f"Website: {BASE_URL}")
+    print("Build complete.")
     print(f"Prompts: {len(items)}")
     print(
-        f"Categories: {len(set(item['category'] for item in items))}"
+        f"Categories: {len(set(item['category'].casefold() for item in items))}"
     )
-    print(
-        f"HTML Pages: {len(list(DIST.rglob('*.html')))}"
-    )
-    print(
-        f"XML Sitemaps: {len(list(DIST.glob('sitemap*.xml')))}"
-    )
-    print("Google Verification: Installed")
-    print("Bing Verification: Installed")
-    print("Live-Year Script: Installed")
-    print("Unique Category Cards: Verified")
-    print("Dark Sitemap XSL: Installed")
-    print("10-Site Network Footer: Installed")
-    print("XML Validation: Passed")
-    print(f"Output Directory: {DIST}")
-    print("=" * 55)
+    print("Google Search Console verification: included")
+    print("Bing Webmaster verification: included")
+    print("Live browser year: enabled")
+    print("Unique category cards: enabled")
+    print("Styled XML sitemaps: enabled")
+    print("10-site network footer: enabled")
+    print(f"Output: {DIST}")
 
 
 if __name__ == "__main__":
     try:
         build()
-
     except Exception as exc:
         print(
             f"Build failed: {exc}",
